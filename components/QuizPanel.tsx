@@ -240,14 +240,14 @@ export function QuizPanel({
             ← Previous
           </button>
           <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() =>
-                window.open(link.url, "_blank", "noopener,noreferrer")
-              }
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
               className="px-3 py-1.5 bg-transparent hover:bg-[var(--bg-elev-2)] border border-[var(--accent-border)] text-[var(--accent)] rounded-md text-xs font-medium"
             >
               {link.label} ↗
-            </button>
+            </a>
             {(feedback || revealed) && (
               <button
                 onClick={resetBoard}

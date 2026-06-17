@@ -277,22 +277,18 @@ export default function Home() {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {sortedThemes.slice(0, 6).map(([theme, count]) => (
-                      <button
+                      <a
                         key={theme}
-                        onClick={() =>
-                          window.open(
-                            THEME_URLS[theme as keyof typeof THEME_URLS],
-                            "_blank",
-                            "noopener,noreferrer"
-                          )
-                        }
+                        href={THEME_URLS[theme as keyof typeof THEME_URLS]}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1 bg-transparent hover:bg-[var(--bg-elev-2)] border border-[var(--border)] rounded-md text-xs transition-colors"
                       >
                         {THEME_LABELS[theme as keyof typeof THEME_LABELS]}
                         <span className="text-[var(--text-muted)] ml-1.5">
                           ×{count}
                         </span>
-                      </button>
+                      </a>
                     ))}
                   </div>
                 </div>
@@ -347,14 +343,14 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="flex gap-1.5 flex-wrap">
-                        <button
-                          onClick={() =>
-                            window.open(g.url, "_blank", "noopener,noreferrer")
-                          }
+                        <a
+                          href={g.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="px-2.5 py-1 bg-transparent hover:bg-[var(--bg-elev-2)] border border-[var(--border)] rounded-md text-xs transition-colors"
                         >
                           Open
-                        </button>
+                        </a>
                         <button
                           onClick={() => runAnalysis(g)}
                           disabled={
@@ -444,19 +440,15 @@ export default function Home() {
                             return (
                               <div className="mb-3 flex flex-wrap gap-1.5">
                                 {themes.map((t) => (
-                                  <button
+                                  <a
                                     key={t}
-                                    onClick={() =>
-                                      window.open(
-                                        THEME_URLS[t],
-                                        "_blank",
-                                        "noopener,noreferrer"
-                                      )
-                                    }
+                                    href={THEME_URLS[t]}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="px-2 py-0.5 bg-transparent hover:bg-[var(--bg-elev-2)] border border-[var(--border)] rounded text-xs text-[var(--text-soft)] transition-colors"
                                   >
                                     {THEME_LABELS[t]} ↗
-                                  </button>
+                                  </a>
                                 ))}
                               </div>
                             );
