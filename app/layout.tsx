@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mistake Trainer",
+  title: "Chess Lens",
   description: "Find your chess mistakes and drill them away.",
+  icons: {
+    icon: "/chesslens.png",
+  },
 };
 
 export default function RootLayout({

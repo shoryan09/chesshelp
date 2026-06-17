@@ -133,10 +133,6 @@ export default function Home() {
       <div className="max-w-2xl mx-auto">
         {/* Hero */}
         <header className="pt-8 sm:pt-16 pb-10 sm:pb-14">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 mb-6 bg-[var(--accent-soft)] border border-[var(--accent-border)] rounded-full text-xs text-[var(--text-soft)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--orange)]" />
-            Built for beginners
-          </div>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-3">
             Find your chess mistakes.
             <br />
@@ -508,8 +504,8 @@ export default function Home() {
         )}
 
         <footer className="mt-16 pt-8 border-t border-[var(--border-soft)] text-xs text-[var(--text-muted)] text-center">
-          Stockfish 18 NNUE · {games.length > 0 ? "Local-only" : "No login"} ·
-          Built for chess.com
+          Stockfish 18 · {games.length > 0 ? "Local-only" : "No login"} ·
+          Built for chess.com (Not affiliated with Chess.com)
         </footer>
       </div>
 
