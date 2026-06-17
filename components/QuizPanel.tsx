@@ -266,7 +266,7 @@ export function QuizPanel({
             )}
             <button
               onClick={next}
-              className="px-3 py-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-md text-xs font-medium"
+              className="px-3 py-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--bg)] rounded-md text-xs font-medium"
             >
               {index === total - 1 ? "Finish" : "Next →"}
             </button>
