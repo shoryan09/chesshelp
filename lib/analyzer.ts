@@ -24,16 +24,10 @@ export type Mistake = {
 
 export type AnalyzeOptions = {
   depth?: number;
-  userRating?: number;
+  mistakeThreshold?: number;
   lostThreshold?: number;
   onProgress?: (current: number, total: number) => void;
 };
-
-function ratingToThreshold(rating: number): number {
-  if (rating < 800) return 125;
-  if (rating < 1500) return 100;
-  return 80;
-}
 
 function detectTheme(
   fenBefore: string,
@@ -59,7 +53,7 @@ function detectTheme(
     return kind === "miss" ? "advantage" : "general";
   }
 
-  // Back rank mate: M1, rook or queen ending on opponent's back rank
+  // Back rank mate
   if (playerMateBefore !== null && Math.abs(playerMateBefore) === 1) {
     const piece = move.piece;
     const toRank = move.to[1];
@@ -69,13 +63,13 @@ function detectTheme(
     }
   }
 
-  // Mate in N (1-5)
+  // Mate in N
   if (playerMateBefore !== null && playerMateBefore > 0) {
     const n = Math.min(playerMateBefore, 5) as 1 | 2 | 3 | 4 | 5;
     return `mateIn${n}` as ThemeKey;
   }
 
-  // Hanging piece: best move captures, defender can't recapture
+  // Hanging piece
   if (move.captured) {
     try {
       const afterChess = new Chess(fenAfter);
@@ -92,10 +86,9 @@ function detectTheme(
     try {
       const afterChess = new Chess(fenAfter);
       if (afterChess.inCheck()) {
-        // Flip side to move so we can ask: what does the knight attack?
         const parts = fenAfter.split(" ");
         parts[1] = move.color;
-        parts[3] = "-"; // clear en passant to keep FEN valid
+        parts[3] = "-";
         const flipped = new Chess(parts.join(" "));
         const knightMoves = flipped.moves({
           verbose: true,
@@ -123,12 +116,10 @@ export async function analyzeGame(
 ): Promise<Mistake[]> {
   const {
     depth = 15,
-    userRating = 1000,
+    mistakeThreshold = 100,
     lostThreshold = 300,
     onProgress,
   } = options;
-
-  const mistakeThreshold = ratingToThreshold(userRating);
 
   const chess = new Chess();
   chess.loadPgn(pgn);

@@ -89,7 +89,6 @@ export default function Home() {
         getEngine(),
         {
           depth: 15,
-          userRating: game.userRating,
           onProgress: (current, total) =>
             setAnalyses((a) => ({
               ...a,
@@ -131,7 +130,6 @@ export default function Home() {
   return (
     <main className="min-h-screen p-4 sm:p-8">
       <div className="max-w-2xl mx-auto">
-        {/* Hero */}
         <header className="pt-8 sm:pt-16 pb-10 sm:pb-14">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-3">
             Find your chess mistakes.
@@ -143,9 +141,11 @@ export default function Home() {
             surface every blunder and miss, and link straight to matching
             Lichess puzzles.
           </p>
+          <p className="text-xs text-[var(--text-muted)] mt-3">
+            An independent tool. Not affiliated with Chess.com or Lichess.
+          </p>
         </header>
 
-        {/* Search form */}
         <form
           onSubmit={handleSubmit}
           className="flex flex-col sm:flex-row gap-2 mb-12"
@@ -183,7 +183,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Aggregate stats panel */}
         {(() => {
           const allMistakes = Object.values(analyses)
             .filter((a) => a?.status === "done" && a.mistakes)
@@ -293,7 +292,6 @@ export default function Home() {
           );
         })()}
 
-        {/* Games */}
         {games.length > 0 && (
           <section>
             <div className="flex items-baseline justify-between mb-3">
@@ -504,8 +502,7 @@ export default function Home() {
         )}
 
         <footer className="mt-16 pt-8 border-t border-[var(--border-soft)] text-xs text-[var(--text-muted)] text-center">
-          Stockfish 18 · {games.length > 0 ? "Local-only" : "No login"} ·
-          Built for chess.com (Not affiliated with Chess.com)
+          <div>Stockfish 18 · No login · Built for chess.com (Not affiliated with Chess.com)</div>
         </footer>
       </div>
 
