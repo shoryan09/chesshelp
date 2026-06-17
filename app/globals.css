@@ -60,3 +60,7 @@ main {
   background: var(--accent);
   color: var(--bg);
 }
+
+button:not(:disabled) {
+  cursor: pointer !important;
+}
