@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --bg-elev: #131313;
+  --bg-elev-2: #1a1a1a;
+  --border: #262626;
+  --border-soft: #1f1f1f;
+  --text: #ededed;
+  --text-soft: #a1a1a1;
+  --text-muted: #6b6b6b;
+  --accent: #f5f0e6;
+  --accent-soft: rgba(245, 240, 230, 0.08);
+  --accent-border: rgba(245, 240, 230, 0.2);
+  --orange: #ec6d3a;
+  --red: #f87171;
+  --green: #86efac;
+  --purple: #c4b5fd;
+  --blue: #93c5fd;
+  --yellow: #fde68a;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle grid background — purely cosmetic */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at 50% 0%,
+    rgba(236, 109, 58, 0.06),
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+main {
+  position: relative;
+  z-index: 1;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
