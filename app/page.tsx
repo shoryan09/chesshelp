@@ -7,7 +7,7 @@ import { StockfishEngine } from "@/lib/engine";
 import { analyzeGame, type Mistake } from "@/lib/analyzer";
 import { THEME_LABELS, THEME_URLS } from "@/lib/themes";
 import { QuizPanel } from "@/components/QuizPanel";
-import { saveAnalysis, loadAnalysesForUrls, clearCache } from "@/lib/cache";
+import { saveAnalysis, loadAnalysesForUrls} from "@/lib/cache";
 
 type AnalysisState = {
   status: "idle" | "loading-engine" | "analyzing" | "done" | "error";
@@ -112,15 +112,6 @@ export default function Home() {
     }
   }
 
-  async function handleClearCache() {
-    try {
-      await clearCache();
-      setAnalyses({});
-    } catch (err) {
-      console.error("Failed to clear cache:", err);
-    }
-  }
-
   const quizGame = quizGameUrl ? games.find((g) => g.url === quizGameUrl) : null;
   const quizMistakes =
     quizGameUrl && analyses[quizGameUrl]?.mistakes
@@ -165,15 +156,6 @@ export default function Home() {
             >
               {loading ? "Loading..." : "Analyze games"}
             </button>
-            {Object.keys(analyses).length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearCache}
-                className="px-3 py-2.5 bg-transparent hover:bg-[var(--bg-elev)] border border-[var(--border)] rounded-md text-xs text-[var(--text-soft)]"
-              >
-                Clear
-              </button>
-            )}
           </div>
         </form>
 

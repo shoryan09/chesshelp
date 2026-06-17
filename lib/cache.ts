@@ -4,11 +4,16 @@ const DB_NAME = "mistake-trainer";
 const DB_VERSION = 1;
 const STORE = "analyses";
 
+// Bump whenever analyzer logic changes (thresholds, theme detection, mistake
+// criteria, etc.) Old cached entries are silently ignored on next load.
+export const SCHEMA_VERSION = 1;
+
 type CacheEntry = {
   gameUrl: string;
   mistakes: Mistake[];
   analyzedAt: number;
   depth: number;
+  schemaVersion: number;
 };
 
 function openDb(): Promise<IDBDatabase> {
@@ -38,6 +43,7 @@ export async function saveAnalysis(
       mistakes,
       depth,
       analyzedAt: Date.now(),
+      schemaVersion: SCHEMA_VERSION,
     };
     tx.objectStore(STORE).put(entry);
     tx.oncomplete = () => {
@@ -60,7 +66,12 @@ export async function loadAnalysis(
     const req = tx.objectStore(STORE).get(gameUrl);
     req.onsuccess = () => {
       db.close();
-      resolve((req.result as CacheEntry) || null);
+      const entry = req.result as CacheEntry | undefined;
+      if (entry && entry.schemaVersion === SCHEMA_VERSION) {
+        resolve(entry);
+      } else {
+        resolve(null);
+      }
     };
     req.onerror = () => {
       db.close();
@@ -85,7 +96,10 @@ export async function loadAnalysesForUrls(
     for (const url of urls) {
       const req = store.get(url);
       req.onsuccess = () => {
-        if (req.result) results.set(url, req.result as CacheEntry);
+        const entry = req.result as CacheEntry | undefined;
+        if (entry && entry.schemaVersion === SCHEMA_VERSION) {
+          results.set(url, entry);
+        }
         pending--;
         if (pending === 0) {
           db.close();
