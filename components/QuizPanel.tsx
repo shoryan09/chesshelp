@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import type { Mistake } from "@/lib/analyzer";
+import type { AnnotatedMove } from "@/lib/analyzer";
 import { THEME_LABELS, THEME_URLS } from "@/lib/themes";
 import { StockfishEngine } from "@/lib/engine";
 
@@ -16,7 +16,7 @@ type Feedback = {
 };
 
 type QuizPanelProps = {
-  mistakes: Mistake[];
+  mistakes: AnnotatedMove[];
   userColor: "white" | "black";
   engine: StockfishEngine;
   onClose: () => void;
@@ -24,7 +24,7 @@ type QuizPanelProps = {
 
 const TOLERANCE_CP = 50;
 
-function lichessLink(m: Mistake): { url: string; label: string } {
+function lichessLink(m: AnnotatedMove): { url: string; label: string } {
   return {
     url: THEME_URLS[m.theme],
     label: `${THEME_LABELS[m.theme]} puzzles`,
@@ -137,12 +137,18 @@ export function QuizPanel({
             <div className="text-sm font-medium flex items-center gap-2 truncate">
               <span
                 className={
-                  current.kind === "miss"
+                  current.classification === "miss"
                     ? "text-[var(--purple)]"
+                    : current.classification === "blunder"
+                    ? "text-[var(--red)]"
                     : "text-[var(--orange)]"
                 }
               >
-                {current.kind === "miss" ? "Missed" : "Mistake"}
+                {current.classification === "miss"
+                  ? "Missed"
+                  : current.classification === "blunder"
+                  ? "Blunder"
+                  : "Mistake"}
               </span>
               <span className="text-[var(--text-muted)] font-normal">
                 · move {current.moveNumber} · {current.phase}

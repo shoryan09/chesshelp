@@ -1,4 +1,4 @@
-import type { Mistake } from "./analyzer";
+import type { AnnotatedMove } from "./analyzer";
 
 const DB_NAME = "mistake-trainer";
 const DB_VERSION = 1;
@@ -6,11 +6,11 @@ const STORE = "analyses";
 
 // Bump whenever analyzer logic changes (thresholds, theme detection, mistake
 // criteria, etc.) Old cached entries are silently ignored on next load.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 type CacheEntry = {
   gameUrl: string;
-  mistakes: Mistake[];
+  annotations: AnnotatedMove[];
   analyzedAt: number;
   depth: number;
   schemaVersion: number;
@@ -32,7 +32,7 @@ function openDb(): Promise<IDBDatabase> {
 
 export async function saveAnalysis(
   gameUrl: string,
-  mistakes: Mistake[],
+  annotations: AnnotatedMove[],
   depth: number
 ): Promise<void> {
   const db = await openDb();
@@ -40,7 +40,7 @@ export async function saveAnalysis(
     const tx = db.transaction(STORE, "readwrite");
     const entry: CacheEntry = {
       gameUrl,
-      mistakes,
+      annotations,
       depth,
       analyzedAt: Date.now(),
       schemaVersion: SCHEMA_VERSION,

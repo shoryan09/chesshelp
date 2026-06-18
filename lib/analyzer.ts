@@ -3,37 +3,99 @@ import { StockfishEngine } from "./engine";
 import type { ThemeKey } from "./themes";
 
 export type Phase = "opening" | "middlegame" | "endgame";
-export type MistakeKind = "mistake" | "miss";
 
-export type Mistake = {
-  moveNumber: number;
+export type MoveClassification =
+  | "best"
+  | "excellent"
+  | "good"
+  | "inaccuracy"
+  | "mistake"
+  | "blunder"
+  | "miss"
+  | "forced";
+
+export type AnnotatedMove = {
   ply: number;
+  moveNumber: number;
+  color: "white" | "black";
+  san: string;
+  uci: string;
   fenBefore: string;
   fenAfter: string;
-  playedMoveSan: string;
-  playedMoveUci: string;
+  evalBefore: number; // player POV
+  evalAfter: number;  // player POV
+  evalBeforeWhite: number; // white-relative, for eval bar/graph
+  evalAfterWhite: number;
+  delta: number;
   bestMoveUci: string;
   bestMoveSan: string;
-  evalBefore: number;
-  evalAfter: number;
-  delta: number;
-  phase: Phase;
-  kind: MistakeKind;
+  classification: MoveClassification;
   theme: ThemeKey;
+  isForced: boolean;
+  phase: Phase;
 };
 
 export type AnalyzeOptions = {
   depth?: number;
-  mistakeThreshold?: number;
   lostThreshold?: number;
   onProgress?: (current: number, total: number) => void;
 };
+
+// Returns the set of "drillable" annotations — mistakes, blunders, misses.
+export function getDrillable(annotations: AnnotatedMove[]): AnnotatedMove[] {
+  return annotations.filter((a) =>
+    a.classification === "mistake" ||
+    a.classification === "blunder" ||
+    a.classification === "miss"
+  );
+}
+
+function classifyMove(args: {
+  exactBestMove: boolean;
+  isForced: boolean;
+  evalBeforePlayer: number;
+  evalAfterPlayer: number;
+  playerMateBefore: number | null;
+  playerMateAfter: number | null;
+  lostThreshold: number;
+}): MoveClassification {
+  if (args.isForced) return "forced";
+
+  const delta = args.evalAfterPlayer - args.evalBeforePlayer;
+  const drop = -delta; // positive means player gave up advantage
+
+  // Miss detection overrides classification
+  const hadMate =
+    args.playerMateBefore !== null && args.playerMateBefore > 0;
+  const stillHasMate =
+    args.playerMateAfter !== null && args.playerMateAfter > 0;
+  const missedMate = hadMate && !stillHasMate;
+
+  const hadWinningAdv =
+    !hadMate &&
+    args.evalBeforePlayer >= 300 &&
+    args.evalBeforePlayer < 9000;
+  const lostWinningAdv = hadWinningAdv && drop > 100;
+
+  if (missedMate || lostWinningAdv) return "miss";
+
+  // Already-lost positions get classified leniently
+  const wasLost = args.evalBeforePlayer < -args.lostThreshold;
+  if (wasLost && drop < 500) return "good"; // small further losses when down
+
+  if (args.exactBestMove || drop <= 15) return "best";
+  if (drop <= 50) return "excellent";
+  if (drop <= 100) return "good";
+  if (drop <= 150) return "inaccuracy";
+  if (drop <= 250) return "mistake";
+  return "blunder";
+}
 
 function detectTheme(
   fenBefore: string,
   bestMoveUci: string,
   playerMateBefore: number | null,
-  kind: MistakeKind
+  classification: MoveClassification
 ): ThemeKey {
   let move: Move | null = null;
   let fenAfter = "";
@@ -42,18 +104,16 @@ function detectTheme(
     move = c.move({
       from: bestMoveUci.slice(0, 2),
       to: bestMoveUci.slice(2, 4),
-      promotion:
-        bestMoveUci.length === 5 ? bestMoveUci[4] : undefined,
+      promotion: bestMoveUci.length === 5 ? bestMoveUci[4] : undefined,
     });
     if (move) fenAfter = c.fen();
   } catch {
-    return kind === "miss" ? "advantage" : "general";
+    return classification === "miss" ? "advantage" : "general";
   }
   if (!move || !fenAfter) {
-    return kind === "miss" ? "advantage" : "general";
+    return classification === "miss" ? "advantage" : "general";
   }
 
-  // Back rank mate
   if (playerMateBefore !== null && Math.abs(playerMateBefore) === 1) {
     const piece = move.piece;
     const toRank = move.to[1];
@@ -63,13 +123,11 @@ function detectTheme(
     }
   }
 
-  // Mate in N
   if (playerMateBefore !== null && playerMateBefore > 0) {
     const n = Math.min(playerMateBefore, 5) as 1 | 2 | 3 | 4 | 5;
     return `mateIn${n}` as ThemeKey;
   }
 
-  // Hanging piece
   if (move.captured) {
     try {
       const afterChess = new Chess(fenAfter);
@@ -81,7 +139,6 @@ function detectTheme(
     }
   }
 
-  // Knight fork with check
   if (move.piece === "n") {
     try {
       const afterChess = new Chess(fenAfter);
@@ -104,148 +161,12 @@ function detectTheme(
     }
   }
 
-  if (kind === "miss") return "advantage";
+  if (classification === "miss") return "advantage";
   return "general";
-}
-
-export async function analyzeGame(
-  pgn: string,
-  userColor: "white" | "black",
-  engine: StockfishEngine,
-  options: AnalyzeOptions = {}
-): Promise<Mistake[]> {
-  const {
-    depth = 15,
-    mistakeThreshold = 100,
-    lostThreshold = 300,
-    onProgress,
-  } = options;
-
-  const chess = new Chess();
-  chess.loadPgn(pgn);
-  const moves = chess.history({ verbose: true }) as Move[];
-
-  const userMoveIndices: number[] = [];
-  moves.forEach((m, i) => {
-    if (
-      (m.color === "w" && userColor === "white") ||
-      (m.color === "b" && userColor === "black")
-    ) {
-      userMoveIndices.push(i);
-    }
-  });
-
-  const mistakes: Mistake[] = [];
-  let processed = 0;
-  const total = userMoveIndices.length;
-
-  for (const i of userMoveIndices) {
-    const move = moves[i];
-
-    const evalBefore = await engine.evaluate(move.before, depth);
-    const evalAfter = await engine.evaluate(move.after, depth);
-
-    if (evalBefore.bestMove === "(none)") {
-      processed++;
-      onProgress?.(processed, total);
-      continue;
-    }
-
-    const playerEvalBefore =
-      userColor === "white" ? evalBefore.cp : -evalBefore.cp;
-    const playerEvalAfter =
-      userColor === "white" ? evalAfter.cp : -evalAfter.cp;
-    const delta = playerEvalAfter - playerEvalBefore;
-
-    const playerMateBefore =
-      evalBefore.mate === null
-        ? null
-        : userColor === "white"
-        ? evalBefore.mate
-        : -evalBefore.mate;
-    const playerMateAfter =
-      evalAfter.mate === null
-        ? null
-        : userColor === "white"
-        ? evalAfter.mate
-        : -evalAfter.mate;
-
-    const hadForcedMate = playerMateBefore !== null && playerMateBefore > 0;
-    const stillHasMate = playerMateAfter !== null && playerMateAfter > 0;
-    const missedMate = hadForcedMate && !stillHasMate;
-
-    const hadWinningAdvantage =
-      !hadForcedMate &&
-      playerEvalBefore >= 300 &&
-      playerEvalBefore < 9000;
-    const lostWinningAdvantage = hadWinningAdvantage && delta < -100;
-
-    const isMiss = missedMate || lostWinningAdvantage;
-    const isMistake =
-      !isMiss &&
-      delta < -mistakeThreshold &&
-      playerEvalBefore >= -lostThreshold;
-
-    if (!isMiss && !isMistake) {
-      processed++;
-      onProgress?.(processed, total);
-      continue;
-    }
-
-    const moveNumber = Math.ceil((i + 1) / 2);
-    const phase = computePhase(move.after, moveNumber);
-    const kind: MistakeKind = isMiss ? "miss" : "mistake";
-
-    let bestMoveSan = evalBefore.bestMove;
-    try {
-      const probe = new Chess(move.before);
-      const m = probe.move({
-        from: evalBefore.bestMove.slice(0, 2),
-        to: evalBefore.bestMove.slice(2, 4),
-        promotion:
-          evalBefore.bestMove.length === 5
-            ? evalBefore.bestMove[4]
-            : undefined,
-      });
-      if (m) bestMoveSan = m.san;
-    } catch {
-      // ignore
-    }
-
-    const theme = detectTheme(
-      move.before,
-      evalBefore.bestMove,
-      playerMateBefore,
-      kind
-    );
-
-    mistakes.push({
-      moveNumber,
-      ply: i + 1,
-      fenBefore: move.before,
-      fenAfter: move.after,
-      playedMoveSan: move.san,
-      playedMoveUci: move.from + move.to + (move.promotion || ""),
-      bestMoveUci: evalBefore.bestMove,
-      bestMoveSan,
-      evalBefore: playerEvalBefore,
-      evalAfter: playerEvalAfter,
-      delta,
-      phase,
-      kind,
-      theme,
-    });
-
-    processed++;
-    onProgress?.(processed, total);
-  }
-
-  return mistakes;
 }
 
 function computePhase(fen: string, moveNumber: number): Phase {
   if (moveNumber <= 12) return "opening";
-
   const board = fen.split(" ")[0];
   let total = 0;
   for (const c of board) {
@@ -257,7 +178,135 @@ function computePhase(fen: string, moveNumber: number): Phase {
       case "p": total += 1; break;
     }
   }
-
   if (total <= 28) return "endgame";
   return "middlegame";
+}
+
+export async function analyzeGame(
+  pgn: string,
+  _userColor: "white" | "black",
+  engine: StockfishEngine,
+  options: AnalyzeOptions = {}
+): Promise<AnnotatedMove[]> {
+  const { depth = 15, lostThreshold = 300, onProgress } = options;
+
+  const chess = new Chess();
+  chess.loadPgn(pgn);
+  const moves = chess.history({ verbose: true }) as Move[];
+  if (moves.length === 0) return [];
+
+  // Build the FEN list: starting position + after each move.
+  const startingFen = moves[0].before;
+  const fens = [startingFen, ...moves.map((m) => m.after)];
+
+  // Evaluate every position exactly once.
+  const evals = [];
+  for (let i = 0; i < fens.length; i++) {
+    evals.push(await engine.evaluate(fens[i], depth));
+    onProgress?.(i + 1, fens.length);
+  }
+
+  const annotations: AnnotatedMove[] = [];
+
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    const ply = i + 1;
+    const moveNumber = Math.ceil(ply / 2);
+
+    const evalBeforeRes = evals[i];
+    const evalAfterRes = evals[i + 1];
+
+    // Skip if either eval failed
+    if (evalBeforeRes.bestMove === "(none)") continue;
+
+    const evalBeforeWhite = evalBeforeRes.cp;
+    const evalAfterWhite = evalAfterRes.cp;
+
+    const evalBeforePlayer =
+      m.color === "w" ? evalBeforeWhite : -evalBeforeWhite;
+    const evalAfterPlayer =
+      m.color === "w" ? evalAfterWhite : -evalAfterWhite;
+    const delta = evalAfterPlayer - evalBeforePlayer;
+
+    const playerMateBefore =
+      evalBeforeRes.mate === null
+        ? null
+        : m.color === "w"
+        ? evalBeforeRes.mate
+        : -evalBeforeRes.mate;
+    const playerMateAfter =
+      evalAfterRes.mate === null
+        ? null
+        : m.color === "w"
+        ? evalAfterRes.mate
+        : -evalAfterRes.mate;
+
+    const playedUci = m.from + m.to + (m.promotion || "");
+    const exactBestMove = playedUci === evalBeforeRes.bestMove;
+
+    // Forced move detection: only one legal move from the before-position.
+    let isForced = false;
+    try {
+      const probe = new Chess(m.before);
+      isForced = probe.moves().length === 1;
+    } catch {
+      // ignore
+    }
+
+    const classification = classifyMove({
+      exactBestMove,
+      isForced,
+      evalBeforePlayer,
+      evalAfterPlayer,
+      playerMateBefore,
+      playerMateAfter,
+      lostThreshold,
+    });
+
+    let bestMoveSan = evalBeforeRes.bestMove;
+    try {
+      const probe = new Chess(m.before);
+      const bm = probe.move({
+        from: evalBeforeRes.bestMove.slice(0, 2),
+        to: evalBeforeRes.bestMove.slice(2, 4),
+        promotion:
+          evalBeforeRes.bestMove.length === 5
+            ? evalBeforeRes.bestMove[4]
+            : undefined,
+      });
+      if (bm) bestMoveSan = bm.san;
+    } catch {
+      // ignore
+    }
+
+    const theme = detectTheme(
+      m.before,
+      evalBeforeRes.bestMove,
+      playerMateBefore,
+      classification
+    );
+
+    annotations.push({
+      ply,
+      moveNumber,
+      color: m.color === "w" ? "white" : "black",
+      san: m.san,
+      uci: playedUci,
+      fenBefore: m.before,
+      fenAfter: m.after,
+      evalBefore: evalBeforePlayer,
+      evalAfter: evalAfterPlayer,
+      evalBeforeWhite,
+      evalAfterWhite,
+      delta,
+      bestMoveUci: evalBeforeRes.bestMove,
+      bestMoveSan,
+      classification,
+      theme,
+      isForced,
+      phase: computePhase(m.after, moveNumber),
+    });
+  }
+
+  return annotations;
 }

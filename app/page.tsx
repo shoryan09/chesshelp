@@ -4,7 +4,8 @@ import { useState, useRef } from "react";
 import { getRecentGames } from "@/lib/chesscom";
 import type { ParsedGame } from "@/lib/types";
 import { StockfishEngine } from "@/lib/engine";
-import { analyzeGame, type Mistake } from "@/lib/analyzer";
+import { analyzeGame, getDrillable, type AnnotatedMove } from "@/lib/analyzer";
+import { AnalysisBoard } from "@/components/AnalysisBoard";
 import { THEME_LABELS, THEME_URLS } from "@/lib/themes";
 import { QuizPanel } from "@/components/QuizPanel";
 import { saveAnalysis, loadAnalysesForUrls} from "@/lib/cache";
@@ -13,7 +14,7 @@ import { useTheme } from "@/lib/use-theme";
 type AnalysisState = {
   status: "idle" | "loading-engine" | "analyzing" | "done" | "error";
   progress?: { current: number; total: number };
-  mistakes?: Mistake[];
+  annotations?: AnnotatedMove[];
   error?: string;
 };
 
@@ -28,6 +29,9 @@ export default function Home() {
   const engineWarmedRef = useRef(false);
   const [analyses, setAnalyses] = useState<Record<string, AnalysisState>>({});
   const [quizGameUrl, setQuizGameUrl] = useState<string | null>(null);
+  const [analysisBoardGameUrl, setAnalysisBoardGameUrl] = useState<
+    string | null
+  >(null);
 
   function getEngine() {
     if (!engineRef.current) engineRef.current = new StockfishEngine();
@@ -48,7 +52,7 @@ export default function Home() {
       const cached = await loadAnalysesForUrls(result.map((g) => g.url));
       const hydrated: Record<string, AnalysisState> = {};
       for (const [url, entry] of cached) {
-        hydrated[url] = { status: "done", mistakes: entry.mistakes };
+        hydrated[url] = { status: "done", annotations: entry.annotations };
       }
       setAnalyses(hydrated);
     } catch (err) {
@@ -85,7 +89,7 @@ export default function Home() {
         }));
       }
 
-      const mistakes = await analyzeGame(
+      const annotations = await analyzeGame(
         game.pgn,
         game.userColor,
         getEngine(),
@@ -100,9 +104,9 @@ export default function Home() {
       );
       setAnalyses((a) => ({
         ...a,
-        [game.url]: { status: "done", mistakes },
+        [game.url]: { status: "done", annotations },
       }));
-      saveAnalysis(game.url, mistakes, 15).catch(console.error);
+      saveAnalysis(game.url, annotations, 15).catch(console.error);
     } catch (err) {
       setAnalyses((a) => ({
         ...a,
@@ -115,9 +119,17 @@ export default function Home() {
   }
 
   const quizGame = quizGameUrl ? games.find((g) => g.url === quizGameUrl) : null;
-  const quizMistakes =
-    quizGameUrl && analyses[quizGameUrl]?.mistakes
-      ? analyses[quizGameUrl].mistakes
+  const quizDrillable =
+    quizGameUrl && analyses[quizGameUrl]?.annotations
+      ? getDrillable(analyses[quizGameUrl].annotations!)
+      : null;
+
+  const boardGame = analysisBoardGameUrl
+    ? games.find((g) => g.url === analysisBoardGameUrl)
+    : null;
+  const boardAnnotations =
+    analysisBoardGameUrl && analyses[analysisBoardGameUrl]?.annotations
+      ? analyses[analysisBoardGameUrl].annotations!
       : null;
 
   return (
@@ -193,29 +205,31 @@ export default function Home() {
         )}
 
         {(() => {
-          const allMistakes = Object.values(analyses)
-            .filter((a) => a?.status === "done" && a.mistakes)
-            .flatMap((a) => a.mistakes!);
+          const allDrillable = Object.values(analyses)
+            .filter((a) => a?.status === "done" && a.annotations)
+            .flatMap((a) => getDrillable(a.annotations!));
 
-          if (allMistakes.length === 0) return null;
+          if (allDrillable.length === 0) return null;
 
           const analyzedCount = Object.values(analyses).filter(
             (a) => a?.status === "done"
           ).length;
 
           const byPhase = {
-            opening: allMistakes.filter((m) => m.phase === "opening").length,
-            middlegame: allMistakes.filter((m) => m.phase === "middlegame")
+            opening: allDrillable.filter((m) => m.phase === "opening").length,
+            middlegame: allDrillable.filter((m) => m.phase === "middlegame")
               .length,
-            endgame: allMistakes.filter((m) => m.phase === "endgame").length,
+            endgame: allDrillable.filter((m) => m.phase === "endgame").length,
           };
 
           const byKind = {
-            mistake: allMistakes.filter((m) => m.kind === "mistake").length,
-            miss: allMistakes.filter((m) => m.kind === "miss").length,
+            mistake: allDrillable.filter(
+              (m) => m.classification === "mistake" || m.classification === "blunder"
+            ).length,
+            miss: allDrillable.filter((m) => m.classification === "miss").length,
           };
 
-          const themeCounts = allMistakes.reduce<Record<string, number>>(
+          const themeCounts = allDrillable.reduce<Record<string, number>>(
             (acc, m) => {
               acc[m.theme] = (acc[m.theme] || 0) + 1;
               return acc;
@@ -310,8 +324,11 @@ export default function Home() {
             <div className="space-y-1.5">
               {games.map((g) => {
                 const a = analyses[g.url];
-                const hasMistakes =
-                  a?.status === "done" && (a.mistakes?.length ?? 0) > 0;
+                const drillable =
+                  a?.status === "done" && a.annotations
+                    ? getDrillable(a.annotations)
+                    : [];
+                const hasMistakes = drillable.length > 0;
                 return (
                   <div
                     key={g.url}
@@ -375,6 +392,14 @@ export default function Home() {
                             Quiz →
                           </button>
                         )}
+                        {hasMistakes && (
+                          <button
+                            onClick={() => setAnalysisBoardGameUrl(g.url)}
+                            className="px-2.5 py-1 bg-transparent hover:bg-[var(--bg-elev-2)] border border-[var(--border)] rounded-md text-xs font-medium transition-colors"
+                          >
+                            Board →
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -400,14 +425,17 @@ export default function Home() {
                       </div>
                     )}
 
-                    {a?.status === "done" && a.mistakes && (
+                    {a?.status === "done" && a.annotations && (
                       <div className="mt-4 pt-4 border-t border-[var(--border-soft)]">
                         <div className="flex items-center gap-3 text-xs mb-3">
                           <span>
                             <span className="text-[var(--orange)] font-medium">
                               {
-                                a.mistakes.filter((m) => m.kind === "mistake")
-                                  .length
+                                drillable.filter(
+                                  (m) =>
+                                    m.classification === "mistake" ||
+                                    m.classification === "blunder"
+                                ).length
                               }
                             </span>
                             <span className="text-[var(--text-muted)] ml-1">
@@ -416,7 +444,7 @@ export default function Home() {
                           </span>
                           <span>
                             <span className="text-[var(--purple)] font-medium">
-                              {a.mistakes.filter((m) => m.kind === "miss").length}
+                              {drillable.filter((m) => m.classification === "miss").length}
                             </span>
                             <span className="text-[var(--text-muted)] ml-1">
                               misses
@@ -424,18 +452,18 @@ export default function Home() {
                           </span>
                           <span className="text-[var(--text-muted)] ml-auto">
                             O·
-                            {a.mistakes.filter((m) => m.phase === "opening").length}{" "}
+                            {drillable.filter((m) => m.phase === "opening").length}{" "}
                             M·
-                            {a.mistakes.filter((m) => m.phase === "middlegame").length}{" "}
+                            {drillable.filter((m) => m.phase === "middlegame").length}{" "}
                             E·
-                            {a.mistakes.filter((m) => m.phase === "endgame").length}
+                            {drillable.filter((m) => m.phase === "endgame").length}
                           </span>
                         </div>
 
-                        {a.mistakes.length > 0 &&
+                        {drillable.length > 0 &&
                           (() => {
                             const themes = Array.from(
-                              new Set(a.mistakes!.map((m) => m.theme))
+                              new Set(drillable.map((m) => m.theme))
                             );
                             return (
                               <div className="mb-3 flex flex-wrap gap-1.5">
@@ -454,9 +482,9 @@ export default function Home() {
                             );
                           })()}
 
-                        {a.mistakes.length > 0 && (
+                        {drillable.length > 0 && (
                           <div className="space-y-1 text-xs font-mono">
-                            {a.mistakes.map((m) => (
+                            {drillable.map((m) => (
                               <div
                                 key={m.ply}
                                 className="flex items-center gap-2 text-[var(--text-soft)] flex-wrap"
@@ -466,15 +494,17 @@ export default function Home() {
                                 </span>
                                 <span
                                   className={
-                                    m.kind === "miss"
+                                    m.classification === "miss"
                                       ? "text-[var(--purple)]"
+                                      : m.classification === "blunder"
+                                      ? "text-[var(--red)]"
                                       : "text-[var(--orange)]"
                                   }
                                 >
-                                  {m.kind}
+                                  {m.classification}
                                 </span>
                                 <span className="text-[var(--red)]">
-                                  {m.playedMoveSan}
+                                  {m.san}
                                 </span>
                                 <span className="text-[var(--text-muted)]">
                                   →
@@ -507,12 +537,21 @@ export default function Home() {
         </footer>
       </div>
 
-      {quizGame && quizMistakes && (
+      {quizGame && quizDrillable && (
         <QuizPanel
-          mistakes={quizMistakes}
+          mistakes={quizDrillable}
           userColor={quizGame.userColor}
           engine={getEngine()}
           onClose={() => setQuizGameUrl(null)}
+        />
+      )}
+
+      {boardGame && boardAnnotations && boardAnnotations.length > 0 && (
+        <AnalysisBoard
+          annotations={boardAnnotations}
+          userColor={boardGame.userColor}
+          startingFen={boardAnnotations[0].fenBefore}
+          onClose={() => setAnalysisBoardGameUrl(null)}
         />
       )}
     </main>
