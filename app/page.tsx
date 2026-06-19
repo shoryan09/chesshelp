@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { getRecentGames } from "@/lib/chesscom";
 import type { ParsedGame } from "@/lib/types";
 import { StockfishEngine } from "@/lib/engine";
@@ -18,8 +18,20 @@ type AnalysisState = {
   error?: string;
 };
 
+const SESSION_KEY = "chesslens:session";
+
+type SessionSnapshot = {
+  username: string;
+  usernameInput: string;
+  games: ParsedGame[];
+  analyses: Record<string, AnalysisState>;
+  analysisBoardGameUrl: string | null;
+  quizGameUrl: string | null;
+};
+
 export default function Home() {
   const [username, setUsername] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
   const [games, setGames] = useState<ParsedGame[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,15 +50,69 @@ export default function Home() {
     return engineRef.current;
   }
 
+  // Restore session on mount (refresh within the same tab). sessionStorage is
+  // cleared automatically for a new tab, so a fresh tab starts blank.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw) as SessionSnapshot;
+
+      if (typeof snap.username === "string") setUsername(snap.username);
+      if (typeof snap.usernameInput === "string")
+        setUsernameInput(snap.usernameInput);
+      if (Array.isArray(snap.games)) {
+        // endTime round-trips through JSON as a string; revive it as a Date.
+        setGames(
+          snap.games.map((g) => ({ ...g, endTime: new Date(g.endTime) }))
+        );
+      }
+      if (snap.analyses) {
+        const restored: Record<string, AnalysisState> = {};
+        for (const [url, state] of Object.entries(snap.analyses)) {
+          // A persisted "analyzing" state has no live engine behind it — reset
+          // it so the UI doesn't show a stuck progress indicator.
+          restored[url] =
+            state.status === "analyzing" ? { ...state, status: "idle" } : state;
+        }
+        setAnalyses(restored);
+      }
+      if (snap.analysisBoardGameUrl !== undefined)
+        setAnalysisBoardGameUrl(snap.analysisBoardGameUrl);
+      if (snap.quizGameUrl !== undefined) setQuizGameUrl(snap.quizGameUrl);
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }, []);
+
+  // Persist the session snapshot whenever any tracked value changes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        username,
+        usernameInput,
+        games,
+        analyses,
+        analysisBoardGameUrl,
+        quizGameUrl,
+      })
+    );
+  }, [username, usernameInput, games, analyses, analysisBoardGameUrl, quizGameUrl]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!username.trim()) return;
+    const name = usernameInput.trim();
+    if (!name) return;
     setLoading(true);
     setError(null);
+    setUsername(name);
     setGames([]);
     setAnalyses({});
     try {
-      const result = await getRecentGames(username.trim(), 1);
+      const result = await getRecentGames(name, 1);
       setGames(result);
 
       const cached = await loadAnalysesForUrls(result.map((g) => g.url));
@@ -182,15 +248,15 @@ export default function Home() {
         >
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
             placeholder="chess.com username"
             className="flex-1 px-4 py-2.5 bg-[var(--bg-elev)] border border-[var(--border)] rounded-md text-sm focus:outline-none focus:border-[var(--text-muted)] transition-colors"
           />
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={loading || !username.trim()}
+              disabled={loading || !usernameInput.trim()}
               className="flex-1 sm:flex-none px-5 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--bg)] disabled:bg-[var(--bg-elev-2)] disabled:text-[var(--text-muted)] rounded-md text-sm font-medium transition-colors"
             >
               {loading ? "Loading..." : "Analyze games"}

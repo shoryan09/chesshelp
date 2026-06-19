@@ -127,6 +127,7 @@ export function AnalysisBoard({
           <div className="flex gap-2 flex-1 min-w-0">
             <EvalBar
               evalWhite={currentEvalWhite}
+              mate={null}
               orientation={userColor}
             />
             <div className="flex-1 min-w-0 max-w-[480px] mx-auto">
@@ -202,35 +203,68 @@ function StepButton({
 
 function EvalBar({
   evalWhite,
+  mate,
   orientation,
 }: {
   evalWhite: number;
+  mate: number | null;
   orientation: "white" | "black";
 }) {
+  // White's share of the bar (white-relative eval).
   const clipped = Math.max(-1000, Math.min(1000, evalWhite));
-  const whitePct = 50 + (clipped / 1000) * 45;
+  let whitePct = 50 + (clipped / 1000) * 45; // 5..95
+  if (mate !== null) {
+    whitePct = mate > 0 ? 100 : 0;
+  }
   const blackPct = 100 - whitePct;
 
-  const topPct = orientation === "white" ? blackPct : whitePct;
+  // The two fills keep their chess colors; we only flip which is on top so the
+  // user's own color always sits at the bottom (their side of the board).
+  const whiteFill = (
+    <div
+      className="bg-neutral-100 transition-all duration-200"
+      style={{ height: `${whitePct}%` }}
+    />
+  );
+  const blackFill = (
+    <div
+      className="bg-neutral-900 transition-all duration-200"
+      style={{ height: `${blackPct}%` }}
+    />
+  );
 
-  const displayEval = (clipped / 100).toFixed(1);
-  const showWhiteSide = clipped >= 0;
+  // Player-relative eval for the label.
+  const sign = orientation === "white" ? 1 : -1;
+  const playerCp = evalWhite * sign;
+  const playerMate = mate === null ? null : mate * sign;
+
+  const label =
+    playerMate !== null
+      ? playerMate > 0
+        ? `M${Math.abs(playerMate)}`
+        : `-M${Math.abs(playerMate)}`
+      : `${playerCp > 0 ? "+" : ""}${(playerCp / 100).toFixed(1)}`;
 
   return (
-    <div className="w-5 sm:w-6 flex flex-col rounded-sm overflow-hidden border border-[var(--border-soft)] relative">
+    <div className="flex flex-col">
       <div
-        className="bg-neutral-900 transition-all duration-200"
-        style={{ height: `${topPct}%` }}
-      />
-      <div className="bg-neutral-100 flex-1 transition-all duration-200" />
-      <div
-        className="absolute left-0 right-0 text-[9px] font-mono text-center"
-        style={{
-          [showWhiteSide ? "bottom" : "top"]: "2px",
-          color: showWhiteSide ? "#000" : "#fff",
-        }}
+        className="text-xs font-mono text-center mb-1"
+        style={{ color: "var(--text-soft)" }}
       >
-        {displayEval}
+        {label}
+      </div>
+      <div className="w-5 sm:w-6 flex-1 flex flex-col rounded-sm overflow-hidden border border-[var(--border-soft)]">
+        {orientation === "white" ? (
+          <>
+            {blackFill}
+            {whiteFill}
+          </>
+        ) : (
+          <>
+            {whiteFill}
+            {blackFill}
+          </>
+        )}
       </div>
     </div>
   );
