@@ -42,11 +42,18 @@ export type AnalyzeOptions = {
 };
 
 // Returns the set of "drillable" annotations — mistakes, blunders, misses.
-export function getDrillable(annotations: AnnotatedMove[]): AnnotatedMove[] {
-  return annotations.filter((a) =>
-    a.classification === "mistake" ||
-    a.classification === "blunder" ||
-    a.classification === "miss"
+// When userColor is given, only the user's own moves are returned (analyzeGame
+// annotates both sides, but the quiz/stats are about the user's mistakes).
+export function getDrillable(
+  annotations: AnnotatedMove[],
+  userColor?: "white" | "black"
+): AnnotatedMove[] {
+  return annotations.filter(
+    (a) =>
+      (userColor === undefined || a.color === userColor) &&
+      (a.classification === "mistake" ||
+        a.classification === "blunder" ||
+        a.classification === "miss")
   );
 }
 

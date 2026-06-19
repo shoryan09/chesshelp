@@ -41,23 +41,27 @@ export function QuizPanel({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [displayedFen, setDisplayedFen] = useState(
-    mistakes[0]?.fenBefore || ""
-  );
+  const [boardFen, setBoardFen] = useState(mistakes[0]?.fenBefore || "");
 
   const current = mistakes[index];
   const total = mistakes.length;
 
+  // Reset the board to the active mistake's pre-move position whenever the
+  // active mistake changes (Next / Previous).
   useEffect(() => {
     setFeedback(null);
     setRevealed(false);
     setEvaluating(false);
-    if (current) setDisplayedFen(current.fenBefore);
+    if (current) setBoardFen(current.fenBefore);
   }, [index, current]);
 
-  async function handleAttempt(from: string, to: string): Promise<boolean> {
+  // Returns true only for a legal move (so react-chessboard keeps the piece on
+  // its target square); returns false to snap the piece back. The engine
+  // evaluation continues asynchronously after a legal move is accepted.
+  function handleAttempt(from: string, to: string): boolean {
     if (!current || feedback || evaluating) return false;
-    const chess = new Chess(current.fenBefore);
+    const m = current;
+    const chess = new Chess(boardFen);
     let move;
     try {
       move = chess.move({ from, to, promotion: "q" });
@@ -70,28 +74,36 @@ export function QuizPanel({
     const attemptedSan = move.san;
     const resultingFen = chess.fen();
 
-    setDisplayedFen(resultingFen);
-    setEvaluating(true);
+    setBoardFen(resultingFen);
 
-    if (attemptedUci === current.bestMoveUci) {
+    if (attemptedUci === m.bestMoveUci) {
       setFeedback({
         kind: "correct",
         attemptedSan,
-        attemptedEval: current.evalBefore,
-        bestSan: current.bestMoveSan,
-        bestEval: current.evalBefore,
+        attemptedEval: m.evalBefore,
+        bestSan: m.bestMoveSan,
+        bestEval: m.evalBefore,
       });
-      setEvaluating(false);
       return true;
     }
 
+    setEvaluating(true);
+    void evaluateAttempt(m, resultingFen, attemptedSan);
+    return true;
+  }
+
+  async function evaluateAttempt(
+    m: AnnotatedMove,
+    resultingFen: string,
+    attemptedSan: string
+  ) {
     const attemptedEvalResult = await engine.evaluate(resultingFen, 15);
     const playerEvalAfter =
       userColor === "white"
         ? attemptedEvalResult.cp
         : -attemptedEvalResult.cp;
 
-    const bestEval = current.evalBefore;
+    const bestEval = m.evalBefore;
     const diff = bestEval - playerEvalAfter;
     const kind: Feedback["kind"] = diff <= TOLERANCE_CP ? "good" : "incorrect";
 
@@ -99,18 +111,18 @@ export function QuizPanel({
       kind,
       attemptedSan,
       attemptedEval: playerEvalAfter,
-      bestSan: current.bestMoveSan,
+      bestSan: m.bestMoveSan,
       bestEval,
     });
     setEvaluating(false);
-    return true;
   }
 
   function resetBoard() {
     if (!current) return;
-    setDisplayedFen(current.fenBefore);
+    setBoardFen(current.fenBefore);
     setFeedback(null);
     setRevealed(false);
+    setEvaluating(false);
   }
 
   function next() {
@@ -168,14 +180,18 @@ export function QuizPanel({
           <div className="w-full max-w-md mx-auto mb-4">
             <Chessboard
               options={{
-                position: displayedFen,
-                onPieceDrop: ({ sourceSquare, targetSquare }) => {
-                  if (!targetSquare) return false;
-                  handleAttempt(sourceSquare, targetSquare);
-                  return true;
-                },
+                position: boardFen,
                 boardOrientation: userColor,
                 allowDragging: !feedback && !evaluating,
+                // Only the user's own pieces can be picked up.
+                canDragPiece: ({ piece }) =>
+                  piece.pieceType[0] === userColor[0],
+                onPieceDrop: ({ sourceSquare, targetSquare, piece }) => {
+                  if (!targetSquare) return false;
+                  // Reject drags of opponent pieces (defense in depth).
+                  if (piece.pieceType[0] !== userColor[0]) return false;
+                  return handleAttempt(sourceSquare, targetSquare);
+                },
               }}
             />
           </div>

@@ -186,8 +186,8 @@ export default function Home() {
 
   const quizGame = quizGameUrl ? games.find((g) => g.url === quizGameUrl) : null;
   const quizDrillable =
-    quizGameUrl && analyses[quizGameUrl]?.annotations
-      ? getDrillable(analyses[quizGameUrl].annotations!)
+    quizGame && analyses[quizGame.url]?.annotations
+      ? getDrillable(analyses[quizGame.url].annotations!, quizGame.userColor)
       : null;
 
   const boardGame = analysisBoardGameUrl
@@ -271,9 +271,10 @@ export default function Home() {
         )}
 
         {(() => {
-          const allDrillable = Object.values(analyses)
-            .filter((a) => a?.status === "done" && a.annotations)
-            .flatMap((a) => getDrillable(a.annotations!));
+          const allDrillable = games
+            .map((g) => ({ g, a: analyses[g.url] }))
+            .filter(({ a }) => a?.status === "done" && a.annotations)
+            .flatMap(({ g, a }) => getDrillable(a!.annotations!, g.userColor));
 
           if (allDrillable.length === 0) return null;
 
@@ -392,7 +393,7 @@ export default function Home() {
                 const a = analyses[g.url];
                 const drillable =
                   a?.status === "done" && a.annotations
-                    ? getDrillable(a.annotations)
+                    ? getDrillable(a.annotations, g.userColor)
                     : [];
                 const hasMistakes = drillable.length > 0;
                 return (
